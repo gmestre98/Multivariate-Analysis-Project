@@ -72,4 +72,26 @@ shapiro.test(data$BMI)
 shapiro.test(data$Absenteeism)
 shapiro.test(data$`Work load Average/day`)
 
- 
+ #Categorical variables 
+table(data$`Reason for absence`)
+table(data$Month)
+table(data$`Week day`)
+table(data$Seasons)
+table(data$`Disciplinary failure`)
+table(data$Education)
+table(data$`Social drinker`)
+table(data$`Social smoker`)
+
+reasons_counts <- table(data$`Reason for absence`)
+reasons_counts / sum(reasons_counts)
+disciplinary_counts <- table(data$`Disciplinary failure`)
+disciplinary_counts / sum(disciplinary_counts)
+education_counts <- table(data$Education)
+education_counts / sum(education_counts)
+smoker_counts <- table(data$`Social smoker`)
+smoker_counts / sum(smoker_counts)
+
+pairs(data[,10:21],col=ifelse(data$`Disciplinary failure`==0, "black", "red"), upper.panel = NULL) 
+pairs(data[,10:21],col=ifelse(data$`Social smoker`==0, "black", "red"), upper.panel = NULL) 
+pairs(data[,10:21],col=ifelse(data$`Social drinker`==0, "black", "red"), upper.panel = NULL) 
+
