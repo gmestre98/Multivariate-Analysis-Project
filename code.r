@@ -57,4 +57,19 @@ datacorr <- data[c(10:13,15:19)]
 names(datacorr) <- c("Tranportation Expense", "Work Distance", "Service Time", "Age", "Son", "Pet", 
 "Weight", "Height", "BMI")
 pairs.panels(datacorr, hist.col = "#00AFBB", smooth =FALSE,ellipses=FALSE,lm=TRUE) 
+      
+#Test normality of variables
+shapiro.test(data$`Transportation expense`)
+shapiro.test(data$`Work Distance`)
+shapiro.test(data$`Service time`)
+shapiro.test(data$Age)
+shapiro.test(data$`Hit target`)
+shapiro.test(data$Son)
+shapiro.test(data$Pet)
+shapiro.test(data$Weight)
+shapiro.test(data$Height)
+shapiro.test(data$BMI)
+shapiro.test(data$Absenteeism)
+shapiro.test(data$`Work load Average/day`)
+
  
