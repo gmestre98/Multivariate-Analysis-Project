@@ -95,3 +95,12 @@ pairs(data[,10:21],col=ifelse(data$`Disciplinary failure`==0, "black", "red"), u
 pairs(data[,10:21],col=ifelse(data$`Social smoker`==0, "black", "red"), upper.panel = NULL) 
 pairs(data[,10:21],col=ifelse(data$`Social drinker`==0, "black", "red"), upper.panel = NULL) 
 
+#Barchart absenteeism vs age
+absent <- data[c(13,20)]
+ggplot(absent) + geom_bar(aes(x = Age, y=Absenteeism), stat = "identity")
+tab <-aggregate(absent$Absenteeism, by=list(Age=absent$Age), FUN=sum)
+tab1 <- table(absent$Age)
+Absenteeism <- as.vector(tab$x/tab1)
+ggplot(tab) + geom_bar(aes(x = Age, y=Absenteeism), stat = "identity", fill=rgb(0.3,0.5,0.4,0.6)) +
+ggtitle("Average Absenteeism time in hours by age") + theme(plot.title = element_text(hjust = 0.5))
+
