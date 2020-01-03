@@ -6,6 +6,12 @@
 #install.packages("onehot")
 #install.packages("mltools")
 #install.packages("calibrate")
+#install.packages("klaR")
+#install.packages("e1071")
+#install.packages("randomForest")
+#install.packages("neuralnet")
+#install.packages("nnet")
+#install.packages("VGAM")
 library(readxl)
 library(rospca)
 library(pcaPP)
@@ -18,6 +24,12 @@ library(mltools)
 library(calibrate)
 library(MASS)
 library(caret)
+library(klaR)
+library(e1071)
+library(randomForest)
+library(neuralnet)
+library(nnet)
+library(VGAM)
 
 #Read Data
 data <- read_excel("Absenteeism_at_work.xls")
@@ -72,20 +84,93 @@ names(scores)[38] <- "class"
 #CLASSIFICATION
 #divide dataset into train (70%) and test (30%)
 set.seed(1)
-train <- sample(1:740, round(740*.8)) 
+train <- sample(1:740, round(740*.7)) 
 test <- scores[c(-train),]
 train <- scores[c(train),]
-class <- as.factor(train[,38])
+train.classes <- as.factor(train[,38])
+scores.classes <- as.factor(scores[,38])
 n.class=length(table(train[,38]))
 
 ### Linear Discriminant Analysis
-z <- lda(train[,1:37], grouping=train[,38], prior=ones(n.class,1)/n.class, CV=FALSE)
-zt<-predict(z,test[,1:37],prior=as.vector(ones(n.class,1)/n.class))
-#confusion matrix
+z <- lda(train[,1:37], grouping=train.classes, prior=ones(n.class,1)/n.class, CV=FALSE)
+zt<-predict(z,test[,1:37])
+#confusion matrix LDA
 zt.pred <- factor(zt$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
 test.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
 confusionMatrix(zt.pred,test.class)
+##leave-one-out
+z2 <- lda(scores[,1:37], grouping=scores.classes, prior=ones(19,1)/19, CV=TRUE)
+#confusion matrix LDA loo
+z2.pred <- factor(z2$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+test2.class <- factor(scores[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+confusionMatrix(z2.pred,test2.class)
 
+#EEEEEERRRRRRRRRRROOOOOOOOOOO
+train$class <- as.factor(train$class)
+### Linear Regression
+zlin <- lm(class ~ ., data = train)
+ztlin <-predict(zlin,test[,1:37])
+#confusion matrix logistic regression
+ztlin.pred <- factor(ztlin, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+testlin.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+confusionMatrix(ztlin.pred,testlin.class)
+
+### Logistic Regression 
+zlr <- nnet::multinom(class ~., data = train)
+ztlr<-predict(zlr,test[,1:37])
+#confusion matrix logistic regression
+ztlr.pred <- factor(ztlr, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+testlr.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+confusionMatrix(ztlr.pred,testlr.class)
+
+
+#EEEERRRRRRRRRRRRRROOOOOOhelp
+#Regularized Discriminant Analysis 
+zr <- rda(train[,1:37], grouping=train.classes, prior=ones(n.class,1)/n.class, CV=FALSE)
+ztr<-predict(zr,test[,1:37])
+#confusion matrix RDA
+ztr.pred <- factor(ztr$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+testr.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+confusionMatrix(ztr.pred,testr.class)
+##leave-one-out
+z2r <- rda(scores[,1:37], grouping=scores.classes, prior=ones(19,1)/19, CV=TRUE)
+#confusion matrix RDA loo
+z2r.pred <- factor(z2r$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+test2r.class <- factor(scores[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+confusionMatrix(z2r.pred,test2r.class)
+
+###Support Vector Machines
+zsvm <- svm(train[,1:37],train.classes,type = "C-classification")
+ztsvm <- predict(zsvm,test[,1:37])
+#confusion matrix svm
+ztsvm.pred <- factor(ztsvm, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+testsvm.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+confusionMatrix(ztsvm.pred,testsvm.class)
+
+###Naive Bayes Classifier
+znb <- svm(train[,1:37],train.classes,type = "C-classification")
+ztnb <- predict(znb,test[,1:37])
+#confusion matrix naive bayes
+ztnb.pred <- factor(ztnb, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+testnb.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+confusionMatrix(ztnb.pred,testnb.class)
+
+##EEEEERRRRRROOOOOOO
+#Neural Networks
+znn <- nnet(class ~ ., data=train, size=15)
+ztnn <- predict(znn,test[,1:37])
+#confusion matrix svm
+ztnn.pred <- factor(ztnn, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+testnn.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+confusionMatrix(ztnn.pred,testnn.class)
+
+###Random Forest
+zrf <- randomForest(train[,1:37],train.classes)
+ztrf <- predict(zrf,test[,1:37])
+#confusion matrix random forest
+ztrf.pred <- factor(ztrf, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+testrf.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+confusionMatrix(ztrf.pred,testrf.class)
 
 
 
