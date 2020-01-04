@@ -137,7 +137,7 @@ testsvm.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,
 confusionMatrix(ztsvm.pred,testsvm.class)
 
 ###Naive Bayes Classifier
-znb <- svm(train[,1:37],train.classes,type = "C-classification")
+znb <- naiveBayes(train[,1:37],train.classes)
 ztnb <- predict(znb,test[,1:37])
 #confusion matrix naive bayes
 ztnb.pred <- factor(ztnb, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
@@ -182,15 +182,21 @@ scores2 <- cbind(scoresp2,data.onehot2)
 scores2 <- as.data.frame(scores2)
 scores2 <- as.data.frame(cbind(scores2,class=data[,20]))
 names(scores2)[67] <- "class"
+nbscores <- cbind(scoresp2, data[c(2:9)])
+nbscores <- data.frame(cbind(nbscores, class=data[,20]))
+names(nbscores)[15] <- "class"
 
 #CLASSIFICATION
 #divide dataset into train (70%) and test (30%)
 set.seed(1)
 train2 <- sample(1:740, round(740*.7)) 
+nbtrain <- nbscores[c(train2),]
+nbtest <- nbscores[c(-train2),]
 test2 <- scores2[c(-train2),]
 train2 <- scores2[c(train2),]
 train2.classes <- as.factor(train2[,67])
 scores2.classes <- as.factor(scores2[,67])
+nbtrain.classes <- as.factor(nbtrain[,15])
 n.class2=length(table(train2[,67]))
 #removing constant columns
 train2 <- train2[,!apply(train2, MARGIN = 2, function(x) max(x, na.rm = TRUE) == min(x, na.rm = TRUE))]
@@ -244,20 +250,20 @@ testsvm2.class <- factor(test2[,n.columns+1], levels=c(0:5,7:8,16,24,32,40,48,56
 confusionMatrix(zztsvm.pred,testsvm2.class)
 
 ###Naive Bayes Classifier
-zznb <- svm(train2[,1:n.columns],train2.classes,type = "C-classification")
-zztnb <- predict(zznb,test2[,1:n.columns])
+zznb <- naiveBayes(nbtrain[,1:14],nbtrain.classes)
+zztnb <- predict(zznb,nbtest[,1:14])
 #confusion matrix naive bayes
 zztnb.pred <- factor(zztnb, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testnb2.class <- factor(test2[,n.columns+1], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+testnb2.class <- factor(nbtest[,15], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
 confusionMatrix(zztnb.pred,testnb2.class)
 
 ##EEEEERRRRRROOOOOOO
 #Neural Networks
-zznn <- nnet(class ~ ., data=train2, size=15)
-zztnn <- predict(zznn,test2[,1:n.columns])
+zznn <- nnet(class ~ ., data=nbtrain, size=15)
+zztnn <- predict(zznn,nbtest[,1:14])
 #confusion matrix svm
 zztnn.pred <- factor(zztnn, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testnn2.class <- factor(test2[,n.columns+1], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+testnn2.class <- factor(nbtest[,15], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
 confusionMatrix(zztnn.pred,testnn2.class)
 
 ###Random Forest
