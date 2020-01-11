@@ -12,6 +12,7 @@
 #install.packages("neuralnet")
 #install.packages("nnet")
 #install.packages("VGAM")
+#install.packages("ROCit")
 library(readxl)
 library(rospca)
 library(pcaPP)
@@ -30,6 +31,8 @@ library(randomForest)
 library(neuralnet)
 library(nnet)
 library(VGAM)
+library(ROCit)
+
 
 #Read Data
 data <- read_excel("Absenteeism_at_work.xls")
@@ -38,7 +41,6 @@ data
 #Set categorical variables
 data$ID <- as.factor(data$ID)
 data$Seasons <- as.factor(data$Seasons)
-data$`Reason for absence` <- as.factor(data$`Reason for absence`)
 data$`Month of absence` <- as.factor(data$`Month of absence`)
 data$`Day of the week` <- as.factor(data$`Day of the week`)
 data$`Disciplinary failure` <- as.factor(data$`Disciplinary failure`)
@@ -51,225 +53,159 @@ data=data[,c(1:5,12,13,15,16,6:9,11,14,17:21,10)]
 
 #Rename columns
 names(data)[11] <- "Work Distance"
-names(data)[19] <- "BMI"
 names(data)[20] <- "Absenteeism"
 names(data)[3] <- "Month"
 names(data)[4] <- "Week day"
 
+#remove ID, Weight, Height and BMI
+data=data[,c(2:16,20:21)]
+
+#changing reason for absence column
+i=1;
+while(i<dim(data[,1])[1]){if(data[i,1]>=1 && data[i,1]<=21){data[i,1]=1}
+  else if(data[i,1]==22){data[i,1]=2}   
+  else if(data[i,1]==23){data[i,1]=3} 
+  else if(data[i,1]==24){data[i,1]=4} 
+  else if(data[i,1]==25){data[i,1]=5}   
+  else if(data[i,1]==26){data[i,1]=6} 
+  else if(data[i,1]==27){data[i,1]=7} 
+  else if(data[i,1]==28){data[i,1]=8}   
+  ;i=i+1}
+data$`Reason for absence` <- as.factor(data$`Reason for absence`)
+
+#changing work load average/day column
+i=1;
+while(i<dim(data[,1])[1]){data[i,17]=round(data[i,17]/1000); i=i+1}
+
+#changing absenteeism column
+i=1;
+while(i<dim(data[,1])[1]){if(data[i,16]==0){data[i,16]=0}
+  else if(1<=data[i,16] && data[i,16]<8){data[i,16]=1} 
+  else if(data[i,16]==8){data[i,16]=2}
+  else if(data[i,16]>8 && data[i,16]<=40){data[i,16]=3}
+  else if(data[i,16]>40){data[i,16]=4}
+  ;i=i+1}
+data$Absenteeism <- as.factor(data$Absenteeism)
+
+#removing outliers && variables Service Time, Transportation Expense and Work Distance
+data <- data[-c(62,64),]
+data <- data[, c(1:15, 17, 16)]
+data <- data[-c(9:11)]
 
 
-#QUESTION 3 - CLASSIFICATION
+####### QUESTION 3 - CLASSIFICATION
+####PRE-ANALYSIS
+#using multidimensional scaling (MDS) for categorical variables
+#one hot encoding for Hamming distance
+data.ponehot <- onehot(data[c(1:8)], max_levels = 60)
+data.onehot <- predict(data.ponehot,data[c(1:8)])
+#dist <- dist(data.onehot, method="hamming")
+dist <- hamming.distance(data.onehot)
+mds <- cmdscale(dist, k=13,eig=TRUE) 
+plot(mds$eig, 
+     type="h", lwd=5, las=1, 
+     xlab="Number of dimensions", 
+     ylab="Eigenvalues")
+abline(v =13, untf = FALSE, col="blue")
+scores.mds <- mds$points
 
-#i didn't consider column 1 - ID
 
-
-#using all variable for PCA
-#one hot encoding (solving categorical variables' problem)
-data.ponehot <- onehot(data[c(2:19,21)], max_levels = 60)
-data.onehot <- predict(data.ponehot,data[c(2:19,21)])
-#PCA for all variables (20) standardized
-data.pca <- prcomp(data.onehot, scale. = T, retx=TRUE) 
+#using quantitative variables for PCA - standardized
+data.pca <- prcomp(data[,c(9:13)], scale. = T, retx=TRUE) 
 summary(data.pca) 
 #deciding how many PC we should use
-screeplot(data.pca, npcs = 71, main="", type="lines") 
-abline(h=mean(data.pca$sdev^2),col="green") #VEEEEER
+screeplot(data.pca, npcs = 5, main="", type="lines") 
 data.loadings <- data.pca$sdev^2
-sum(data.loadings[1:37])/sum(data.loadings) #37 PC to keep - 0.8084056
+sum(data.loadings[1:4])/sum(data.loadings) #4 PC to keep - 0.8595111
+data.pca[["rotation"]]
+
 #dataset we are going to use for classification (scores)
-scoresp <- data.pca$x
-scoresp <- scoresp[,c(1:37)]
-scoresp <- as.data.frame(scoresp)
-scores <- as.data.frame(cbind(scoresp[,1:37],class=data[,20]))
-names(scores)[38] <- "class"
-#CLASSIFICATION
+scores.pca <- data.pca$x #from PCA
+scores.pca <- scores.pca[,c(1:4)]
+scores <- as.data.frame(cbind(scores.mds,scores.pca,data[,14]))
+names(scores)[18] <- "class"
+
+####CLASSIFICATION
 #divide dataset into train (70%) and test (30%)
-set.seed(1)
-train <- sample(1:740, round(740*.7)) 
+train <- sample(1:738, round(738*.7)) 
 test <- scores[c(-train),]
 train <- scores[c(train),]
-train.classes <- as.factor(train[,38])
-scores.classes <- as.factor(scores[,38])
-n.class=length(table(train[,38]))
+train.classes <- as.factor(train[,18])
+scores.classes <- as.factor(scores[,18])
+n.class=length(table(train[,18]))
 
-### Linear Discriminant Analysis
-z <- lda(train[,1:37], grouping=train.classes, prior=ones(n.class,1)/n.class, CV=FALSE)
-zt<-predict(z,test[,1:37])
+###Linear Discriminant Analysis
+z <- lda(train[,1:17], grouping=train.classes, prior=ones(n.class,1)/n.class, CV=FALSE)
+zt<-predict(z,test[,1:17], type = "class")
 #confusion matrix LDA
-zt.pred <- factor(zt$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-test.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+zt.pred <- factor(zt$class, levels=c(0:4))
+test.class <- factor(test[,18], levels=c(0:4))
 confusionMatrix(zt.pred,test.class)
 ##leave-one-out
-z2 <- lda(scores[,1:37], grouping=scores.classes, prior=ones(19,1)/19, CV=TRUE)
+z2 <- lda(scores[,1:17], grouping=scores.classes, prior=ones(5,1)/5, CV=TRUE)
 #confusion matrix LDA loo
-z2.pred <- factor(z2$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-test2.class <- factor(scores[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+z2.pred <- factor(z2$class, levels=c(0:4))
+test2.class <- factor(scores[,18], levels=c(0:4))
 confusionMatrix(z2.pred,test2.class)
 
-### Logistic Regression 
+###Quadratic Discriminant Analysis
+zqda <- qda(train[,1:17], grouping=train.classes, prior=ones(n.class,1)/n.class, CV=FALSE)
+ztqda<-predict(zqda,test[,1:17], type = "class")
+#confusion matrix LDA
+ztqda.pred <- factor(ztqda$class, levels=c(0:4))
+testqda.class <- factor(test[,18], levels=c(0:4))
+confusionMatrix(ztqda.pred,testqda.class)
+##leave-one-out
+z2qda <- qda(scores[,1:17], grouping=scores.classes, prior=ones(5,1)/5, CV=TRUE)
+#confusion matrix LDA loo
+z2qda.pred <- factor(z2qda$class, levels=c(0:4))
+test2qda.class <- factor(scores[,18], levels=c(0:4))
+confusionMatrix(z2qda.pred,test2qda.class)
+
+###Logistic Regression 
 zlr <- nnet::multinom(class ~., data = train)
-ztlr<-predict(zlr,test[,1:37])
+ztlr<-predict(zlr,test[,1:17], type = "class")
 #confusion matrix logistic regression
-ztlr.pred <- factor(ztlr, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testlr.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+ztlr.pred <- factor(ztlr, levels=c(0:4))
+testlr.class <- factor(test[,18], levels=c(0:4))
 confusionMatrix(ztlr.pred,testlr.class)
 
-#EEEERRRRRRRRRRRRRROOOOOOhelp
-#Regularized Discriminant Analysis 
-zr <- rda(train[,1:37], grouping=train.classes, prior=ones(n.class,1)/n.class, CV=FALSE)
-ztr<-predict(zr,test[,1:37])
+###Regularized Discriminant Analysis 
+zr <- rda(train[,1:17], grouping=train.classes, prior=ones(n.class,1)/n.class, CV=FALSE)
+ztr<-predict(zr,test[,1:17], type = "class")
 #confusion matrix RDA
-ztr.pred <- factor(ztr$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testr.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+ztr.pred <- factor(ztr$class, levels=c(0:4))
+testr.class <- factor(test[,18], levels=c(0:4))
 confusionMatrix(ztr.pred,testr.class)
-##leave-one-out
-z2r <- rda(scores[,1:37], grouping=scores.classes, prior=ones(19,1)/19, CV=TRUE)
-#confusion matrix RDA loo
-z2r.pred <- factor(z2r$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-test2r.class <- factor(scores[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(z2r.pred,test2r.class)
 
 ###Support Vector Machines
-zsvm <- svm(train[,1:37],train.classes,type = "C-classification")
-ztsvm <- predict(zsvm,test[,1:37])
+zsvm <- svm(train[,1:17],train.classes,type = "C-classification")
+ztsvm <- predict(zsvm,test[,1:17], type = "class")
 #confusion matrix svm
-ztsvm.pred <- factor(ztsvm, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testsvm.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+ztsvm.pred <- factor(ztsvm, levels=c(0:4))
+testsvm.class <- factor(test[,18], levels=c(0:4))
 confusionMatrix(ztsvm.pred,testsvm.class)
 
 ###Naive Bayes Classifier
-znb <- naiveBayes(train[,1:37],train.classes)
-ztnb <- predict(znb,test[,1:37])
+znb <- naiveBayes(train[,1:17],train.classes)
+ztnb <- predict(znb,test[,1:17], type = "class")
 #confusion matrix naive bayes
-ztnb.pred <- factor(ztnb, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testnb.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+ztnb.pred <- factor(ztnb, levels=c(0:4))
+testnb.class <- factor(test[,18], levels=c(0:4))
 confusionMatrix(ztnb.pred,testnb.class)
 
-##EEEEERRRRRROOOOOOO
-#Neural Networks
-znn <- nnet(class ~ ., data=train, size=15)
-ztnn <- predict(znn,test[,1:37])
+###Neural Networks
+znn <- nnet(class ~ ., data=train, size=5)
+ztnn <- predict(znn,test[,1:17], type = "class")
 #confusion matrix svm
-ztnn.pred <- factor(ztnn, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testnn.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+ztnn.pred <- factor(ztnn, levels=c(0:4))
+testnn.class <- factor(test[,18], levels=c(0:4))
 confusionMatrix(ztnn.pred,testnn.class)
 
 ###Random Forest
-zrf <- randomForest(train[,1:37],train.classes)
-ztrf <- predict(zrf,test[,1:37])
+zrf <- randomForest(train[,1:17],train.classes)
+ztrf <- predict(zrf,test[,1:17], type = "class")
 #confusion matrix random forest
-ztrf.pred <- factor(ztrf, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testrf.class <- factor(test[,38], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
+ztrf.pred <- factor(ztrf, levels=c(0:4))
+testrf.class <- factor(test[,18], levels=c(0:4))
 confusionMatrix(ztrf.pred,testrf.class)
-
-
-
-
-
-#using only quantitative varibles for PCA
-#PCA for quantitative variables (9) standardized
-data.pca2 <- prcomp(data[,c(10:19,21)], scale. = T, retx=TRUE)
-summary(data.pca2) 
-screeplot(data.pca2, main="", type="lines") 
-abline(h=mean(data.pca2$sdev^2),col="green") 
-data.loadings2 <- data.pca2$sdev^2
-sum(data.loadings2[1:6])/sum(data.loadings2) #6 PC to keep - 0.8300326
-#dataset we are going to use for classification (scores and categorical variables from original dataset)
-scoresp2 <- data.pca2$x
-scoresp2 <- scoresp2[,c(1:6)]
-data.ponehot2 <- onehot(data[c(2:9)], max_levels = 60)
-data.onehot2 <- predict(data.ponehot2,data[c(2:9)])
-scores2 <- cbind(scoresp2,data.onehot2)
-scores2 <- as.data.frame(scores2)
-scores2 <- as.data.frame(cbind(scores2,class=data[,20]))
-names(scores2)[67] <- "class"
-nbscores <- cbind(scoresp2, data[c(2:9)])
-nbscores <- data.frame(cbind(nbscores, class=data[,20]))
-names(nbscores)[15] <- "class"
-
-#CLASSIFICATION
-#divide dataset into train (70%) and test (30%)
-set.seed(1)
-train2 <- sample(1:740, round(740*.7)) 
-nbtrain <- nbscores[c(train2),]
-nbtest <- nbscores[c(-train2),]
-test2 <- scores2[c(-train2),]
-train2 <- scores2[c(train2),]
-train2.classes <- as.factor(train2[,67])
-scores2.classes <- as.factor(scores2[,67])
-nbtrain.classes <- as.factor(nbtrain[,15])
-n.class2=length(table(train2[,67]))
-#removing constant columns
-train2 <- train2[,!apply(train2, MARGIN = 2, function(x) max(x, na.rm = TRUE) == min(x, na.rm = TRUE))]
-n.columns <- length(train2)-1
-#removing the same columns from testing data
-test2 <- test2[colnames(train2)]
-
-### Linear Discriminant Analysis
-zz <- lda(train2[,1:n.columns], grouping=train2.classes, prior=ones(n.class2,1)/n.class2, CV=FALSE)
-zzt<-predict(zz,test2[,1:n.columns])
-#confusion matrix LDA
-zzt.pred <- factor(zzt$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-test2.class <- factor(test2[,n.columns+1], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(zzt.pred,test2.class)
-##leave-one-out
-zz2 <- lda(scores2[,1:66], grouping=scores2.classes, prior=ones(19,1)/19, CV=TRUE)
-#confusion matrix LDA loo
-zz2.pred <- factor(zz2$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-test22.class <- factor(scores2[,67], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(zz2.pred,test22.class)
-
-### Logistic Regression 
-zzlr <- nnet::multinom(class ~., data = train2)
-zztlr<-predict(zzlr,test2[,1:14])
-#confusion matrix logistic regression
-zztlr.pred <- factor(zztlr, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testlr2.class <- factor(test2[,15], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(zztlr.pred,testlr2.class)
-
-#EEEERRRRRRRRRRRRRROOOOOOhelp
-#Regularized Discriminant Analysis 
-zzr <- rda(train2[,1:n.columns], grouping=train2.classes, prior=ones(n.class2,1)/n.class2, CV=FALSE)
-zztr<-predict(zzr,test2[,1:n.columns])
-#confusion matrix RDA
-zztr.pred <- factor(zztr$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testr2.class <- factor(test2[,n.columns+1], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(zztr.pred,testr2.class)
-##leave-one-out
-zz2r <- rda(scores2[,1:66], grouping=scores2.classes, prior=ones(19,1)/19, CV=TRUE)
-#confusion matrix RDA loo
-zz2r.pred <- factor(zz2r$class, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-test2r2.class <- factor(scores2[,67], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(zz2r.pred,test2r2.class)
-
-###Support Vector Machines
-zzsvm <- svm(train2[,1:n.columns],train2.classes,type = "C-classification")
-zztsvm <- predict(zzsvm,test2[,1:n.columns])
-#confusion matrix svm
-zztsvm.pred <- factor(zztsvm, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testsvm2.class <- factor(test2[,n.columns+1], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(zztsvm.pred,testsvm2.class)
-
-###Naive Bayes Classifier
-zznb <- naiveBayes(nbtrain[,1:14],nbtrain.classes)
-zztnb <- predict(zznb,nbtest[,1:14])
-#confusion matrix naive bayes
-zztnb.pred <- factor(zztnb, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testnb2.class <- factor(nbtest[,15], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(zztnb.pred,testnb2.class)
-
-##EEEEERRRRRROOOOOOO
-#Neural Networks
-zznn <- nnet(class ~ ., data=nbtrain, size=15)
-zztnn <- predict(zznn,nbtest[,1:14])
-#confusion matrix svm
-zztnn.pred <- factor(zztnn, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testnn2.class <- factor(nbtest[,15], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(zztnn.pred,testnn2.class)
-
-###Random Forest
-zzrf <- randomForest(train2[,1:n.columns],train2.classes)
-zztrf <- predict(zzrf,test2[,1:n.columns])
-#confusion matrix random forest
-zztrf.pred <- factor(zztrf, levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-testrf2.class <- factor(test2[,n.columns+1], levels=c(0:5,7:8,16,24,32,40,48,56,64,80,104,112,120))
-confusionMatrix(zztrf.pred,testrf2.class)
