@@ -51,11 +51,11 @@ data <- data[-which(data$Absenteeism==0,),]
 
 #changing work load average/day column
 i=1;
-while(i<dim(data[,1])[1]){data[i,17]=round(data[i,17]/1000);i=i+1} 
+while(i<=dim(data[,1])[1]){data[i,17]=round(data[i,17]/1000);i=i+1} 
 
 #changing absenteeism column
 i=1;
-while(i<dim(data[,1])[1]){if(1<=data[i,16] && data[i,16]<8){data[i,16]=1} 
+while(i<=dim(data[,1])[1]){if(1<=data[i,16] && data[i,16]<8){data[i,16]=1} 
   else if(data[i,16]==8){data[i,16]=2}
   else if(data[i,16]>8 && data[i,16]<=40){data[i,16]=3}
   else if(data[i,16]>40){data[i,16]=4}
@@ -64,7 +64,7 @@ data$Absenteeism <- as.factor(data$Absenteeism)
 
 #changing reason for absence column
 i=1;
-while(i<dim(data[,1])[1]){if(data[i,1]>=1 && data[i,1]<=21){data[i,1]=1}
+while(i<=dim(data[,1])[1]){if(data[i,1]>=1 && data[i,1]<=21){data[i,1]=1}
   else if(data[i,1]==22){data[i,1]=2}   
   else if(data[i,1]==23){data[i,1]=3} 
   else if(data[i,1]==24){data[i,1]=4} 
@@ -74,7 +74,6 @@ while(i<dim(data[,1])[1]){if(data[i,1]>=1 && data[i,1]<=21){data[i,1]=1}
   else if(data[i,1]==28){data[i,1]=8}
   ;i=i+1}
 data$`Reason for absence` <- as.factor(data$`Reason for absence`)
-
 
 #Boxplots for the quantitative variables
 boxplot(data[,10:15], col=rgb(0.3,0.5,0.4,0.6), las=2,
@@ -193,5 +192,4 @@ names(addic) <-c("Absenteeism", "Addictions", "Count")
 ggplot(addic, aes(x=Absenteeism, y=Count, fill=Addictions))+geom_bar(stat = "identity")+scale_fill_manual(values = customcol)
 
 table(addictions$Drinker_and_Smoker)/sum(table(addictions$Drinker_and_Smoker))
-
 
