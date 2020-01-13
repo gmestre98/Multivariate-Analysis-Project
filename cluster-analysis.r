@@ -1,3 +1,9 @@
+#install.packages(readxl)
+#install.packages(cluster)
+#install.packages('NbClust')
+#install.packages(fpc)
+#install.packages(onehot)
+#install.packages(e1071)
 library(readxl)
 library(cluster)
 library('NbClust')
@@ -220,3 +226,8 @@ summary(silhouette(normal.mod$classification, dist_eu))
 
 
 result = c_average_eu
+
+c1 = data[which(result == 1),]
+c2 = data[which(result == 2),]
+summary(c1)
+summary(c2)
